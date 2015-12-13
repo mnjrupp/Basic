@@ -88,85 +88,122 @@ This file is part of BASIC! for Android
 
     </PreferenceScreen>
 
-    <ListPreference
-        android:key="font_pref"
-        android:title="Font Size"
-        android:summary="Select Font Size"
-        android:entries="@array/font_list_preference"
-        android:entryValues="@array/fontvalues_list_preference"
-        android:defaultValue="Medium"
-        android:dialogTitle="@string/choose_one" />
+    <PreferenceScreen
+        android:key="console_pref"
+        android:title="Console Settings"
+        android:summary="Settings for Console and Other Text Screens"
+        android:persistent="false">
 
-    <ListPreference
-        android:key="csf_pref"
-        android:title="Console Typeface"
-        android:summary="Select Typeface"
-        android:entries="@array/csf_list_preference"
-        android:entryValues="@array/csfvalues_list_preference"
-        android:defaultValue="MS"
-        android:dialogTitle="@string/choose_one" />
+        <ListPreference
+            android:key="font_pref"
+            android:title="Font Size"
+            android:summary="Select Font Size for Console, etc."
+            android:entries="@array/font_list_preference"
+            android:entryValues="@array/fontvalues_list_preference"
+            android:defaultValue="Medium"
+            android:dialogTitle="@string/choose_one" />
 
-    <CheckBoxPreference
-        android:key="console_menu"
-        android:title="Console Menu"
-        android:summary="Display Menu in Console and TGet"
-        android:defaultValue="true" />
+        <ListPreference
+            android:key="csf_pref"
+            android:title="Typeface"
+            android:summary="Select Typeface for Console, etc."
+            android:entries="@array/csf_list_preference"
+            android:entryValues="@array/csfvalues_list_preference"
+            android:defaultValue="MS"
+            android:dialogTitle="@string/choose_one" />
 
-    <CheckBoxPreference
-        android:key="lined_console"
-        android:title="Console Lines"
-        android:summary="Use Lined Console"
-        android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="console_menu"
+            android:title="Console Menu"
+            android:summary="Display Menu in Console and TGet"
+            android:defaultValue="true" />
 
-    <CheckBoxPreference
-        android:key="lined_editor"
-        android:title="Editor Lines"
-        android:summary="Use Lined Editor"
-        android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="lined_console"
+            android:title="Console Lines"
+            android:summary="Use Lined Console"
+            android:defaultValue="true" />
+
+        <ListPreference
+            android:key="empty_color_pref"
+            android:title="Empty Console Color"
+            android:summary="Select Color of Unwritten Console Lines"
+            android:entries="@array/empty_console_list_preference"
+            android:entryValues="@array/empty_console_values_list_preference"
+            android:defaultValue="background"
+            android:dialogTitle="@string/choose_one" />
+
+    </PreferenceScreen>
 
     <PreferenceScreen
-        android:key="editor_items_on_action_bar"
-        android:title="Menu Items on Action Bar"
-        android:summary="Editor menu items to show on action bar"
+        android:key="editor_pref"
+        android:title="Editor Settings"
+        android:summary="Settings for Program Editor"
         android:persistent="false">
 
         <CheckBoxPreference
-            android:key="editor_menu_run_on_action_bar"
-            android:title="RUN on action bar"
-            android:summary="Show RUN on action bar if it fits"
+            android:key="lined_editor"
+            android:title="Editor Lines"
+            android:summary="Use Lined Editor"
+            android:defaultValue="true" />
+
+        <CheckBoxPreference
+            android:key="wrap_editor"
+            android:title="Editor Line Wrap"
+            android:summary="Wrap Long Editor Lines"
             android:defaultValue="false" />
 
         <CheckBoxPreference
-            android:key="editor_menu_load_on_action_bar"
-            android:title="LOAD on action bar"
-            android:summary="Show LOAD on action bar if it fits"
-            android:defaultValue="false" />
-
-        <CheckBoxPreference
-            android:key="editor_menu_save_on_action_bar"
-            android:title="SAVE on action bar"
-            android:summary="Show SAVE on action bar if it fits"
-            android:defaultValue="false" />
-
-        <CheckBoxPreference
-            android:key="editor_menu_exit_on_action_bar"
-            android:title="EXIT on action bar"
-            android:summary="Show EXIT on action bar if it fits"
+            android:key="autoindent"
+            android:title="Editor AutoIndent"
+            android:summary="Enable Editor AutoIndent"
             android:defaultValue="false" />
 
     </PreferenceScreen>
 
-    <CheckBoxPreference
-        android:key="wrap_editor"
-        android:title="Editor Line Wrap"
-        android:summary="Wrap Long Editor Lines"
-        android:defaultValue="false" />
+    <PreferenceScreen
+        android:key="@string/pref_MAB_key"
+        android:title="@string/pref_MAB_title"
+        android:summary="@string/pref_MAB_summary"
+        android:persistent="false">
 
-    <CheckBoxPreference
-        android:key="autoindent"
-        android:title="Editor AutoIndent"
-        android:summary="Enable Editor AutoIndent"
-        android:defaultValue="false" />
+        <CheckBoxPreference
+            android:key="@string/pref_MAB_run_key"
+            android:title="@string/pref_MAB_run_title"
+            android:summary="@string/pref_MAB_run_summary"
+            android:defaultValue="false" />
+
+        <CheckBoxPreference
+            android:key="@string/pref_MAB_load_key"
+            android:title="@string/pref_MAB_load_title"
+            android:summary="@string/pref_MAB_load_summary"
+            android:defaultValue="false" />
+
+        <CheckBoxPreference
+            android:key="@string/pref_MAB_save_key"
+            android:title="@string/pref_MAB_save_title"
+            android:summary="@string/pref_MAB_save_summary"
+            android:defaultValue="false" />
+
+        <CheckBoxPreference
+            android:key="@string/pref_MAB_clear_key"
+            android:title="@string/pref_MAB_clear_title"
+            android:summary="@string/pref_MAB_clear_summary"
+            android:defaultValue="false" />
+
+        <CheckBoxPreference
+            android:key="@string/pref_MAB_search_key"
+            android:title="@string/pref_MAB_search_title"
+            android:summary="@string/pref_MAB_search_summary"
+            android:defaultValue="false" />
+
+        <CheckBoxPreference
+            android:key="@string/pref_MAB_exit_key"
+            android:title="@string/pref_MAB_exit_title"
+            android:summary="@string/pref_MAB_exit_summary"
+            android:defaultValue="false" />
+
+    </PreferenceScreen>
 
     <ListPreference
         android:key="so_pref"

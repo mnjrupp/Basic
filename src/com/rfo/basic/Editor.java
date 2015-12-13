@@ -32,7 +32,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 
-import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
@@ -54,7 +54,6 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Scroller;
 import android.widget.Toast;
@@ -356,7 +355,7 @@ public class Editor extends Activity {
 	protected void onResume() {
 		super.onResume();
 
-		if (Basic.BasicContext == null) {						// if we have lost context then restart Basic Activity
+		if (Basic.getContextManager() == null) {				// if we have lost context then restart Basic Activity
 			Log.e(LOGTAG, CLASSTAG + ".onCreate: lost Context. Restarting BASIC!.");
 			Intent intent = new Intent(getApplicationContext(), Basic.class);
 			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -372,7 +371,8 @@ public class Editor extends Activity {
 		if (mSavedInstanceState != null) {
 			Log.d(LOGTAG, CLASSTAG + ".onResume: found savedInstanceState");
 			ProgramFileName = mSavedInstanceState.getString(STATE_PROGRAM_FILE_NAME);
-			mText.setText(mSavedInstanceState.getString(STATE_MTEXT_DATA));
+			String text = mSavedInstanceState.getString(STATE_MTEXT_DATA);
+			if (text != null) { mText.setText(text); }
 			InitialProgramSize = mSavedInstanceState.getInt(STATE_INITIAL_SIZE);
 			SyntaxErrorDisplacement = mSavedInstanceState.getInt(STATE_ERROR_DISPLACEMENT);
 			Saved = mSavedInstanceState.getBoolean(STATE_SAVED);
@@ -393,11 +393,7 @@ public class Editor extends Activity {
 			finish();
 		} else {
 			setTitle(ProgramFileName);
-
-			if (mMenu != null) {
-				menuItemsToActionBar(mMenu);
-				onPrepareOptionsMenu(mMenu);
-			}
+			menuItemsToActionBar(mMenu);
 
 			mText.getPreferences(this);
 			int SO = Settings.getSreenOrientation(this);
@@ -479,40 +475,24 @@ public class Editor extends Activity {
 	}
 */
 
+	@TargetApi(Build.VERSION_CODES.HONEYCOMB)
+	private void menuItemsToActionBar(Menu menu) {
+		if (menu == null) return;
+		if (Build.VERSION.SDK_INT < 11) return;				// no action needed
+
+		if (Settings.menuItemsToActionBar(this, menu)) {
+			invalidateOptionsMenu();
+		}
+	}
+
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {			// When the user presses Menu
 		super.onCreateOptionsMenu(menu);					// set up and display the Menu
 		MenuInflater inflater = getMenuInflater();
-		inflater.inflate(R.menu.main, menu);
+		inflater.inflate(R.menu.editor, menu);
 		mMenu = menu;
-		menuItemsToActionBar(menu);
+		Settings.menuItemsToActionBar(this, menu);
 		return true;
-	}
-
-	@SuppressLint({ "NewApi", "InlinedApi" })
-	private void menuItemsToActionBar(Menu menu) {
-		if (menu == null) return;
-		if (Build.VERSION.SDK_INT < 11) return;
-
-		MenuItem item = menu.findItem(R.id.run);
-		int action = Settings.getEditorRunOnActionBar(this)
-				? MenuItem.SHOW_AS_ACTION_IF_ROOM : MenuItem.SHOW_AS_ACTION_NEVER;
-		item.setShowAsAction(action);
-
-		item = menu.findItem(R.id.load);
-		action = Settings.getEditorLoadOnActionBar(this)
-				? MenuItem.SHOW_AS_ACTION_IF_ROOM : MenuItem.SHOW_AS_ACTION_NEVER;
-		item.setShowAsAction(action);
-
-		item = menu.findItem(R.id.save);
-		action = Settings.getEditorSaveOnActionBar(this)
-				? MenuItem.SHOW_AS_ACTION_IF_ROOM : MenuItem.SHOW_AS_ACTION_NEVER;
-		item.setShowAsAction(action);
-
-		item = menu.findItem(R.id.exit);
-		action = Settings.getEditorExitOnActionBar(this)
-				? MenuItem.SHOW_AS_ACTION_IF_ROOM : MenuItem.SHOW_AS_ACTION_NEVER;
-		item.setShowAsAction(action);
 	}
 
 	@Override
@@ -703,7 +683,6 @@ public class Editor extends Activity {
 			Basic.lines.add(new Run.ProgramLine("@@@"));		// add Nothing to run command
 		}
 
-		Basic.theRunContext = null;								// Run will set theRunContext to non-null value
 		SyntaxErrorDisplacement = -1;
 		startActivity(new Intent(this, Run.class));				// now go run the program
 	}
@@ -887,7 +866,7 @@ public class Editor extends Activity {
 		.setPositiveButton("Restart Now", new DialogInterface.OnClickListener() {
 			public void onClick(DialogInterface dialog, int id) {
 				dialog.cancel();
-				Intent restart = new Intent(Basic.BasicContext, Basic.class);
+				Intent restart = new Intent(getApplicationContext(), Basic.class);
 				startActivity(restart);
 				finish();
 			}

@@ -44,6 +44,7 @@ import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Locale;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -80,7 +81,6 @@ import java.security.spec.KeySpec;
 public class Basic extends Activity {
 
 	private static final String LOGTAG = "Basic";
-	private static final String CLASSTAG = Basic.class.getSimpleName();
 
 	public static final String SOURCE_DIR    = "source";
 	public static final String DATA_DIR      = "data";
@@ -99,11 +99,10 @@ public class Basic extends Activity {
 
 	public static ArrayList<Run.ProgramLine> lines;			// Program lines for execution
 
-	public static Context BasicContext;						// saved so we do not have to pass it around
-	public static Context theRunContext;
+	public static ContextManager mContextMgr = null;
 	public static String mBasicPackage = "";				// not valid but not null
 
-	public static String SD_ProgramPath = "";	// Used by Load/Save
+	public static String SD_ProgramPath = "";				// Used by Load/Save
 
 	private TextView mProgressText;
 	private Dialog mProgressDialog;
@@ -178,10 +177,19 @@ public class Basic extends Activity {
 		return path;												// unmodified path if getCanonicalPath threw exception
 	}
 
+	public static ContextManager getContextManager() {
+		return mContextMgr;
+	}
+
+	public static void clearContextManager() {
+		mContextMgr.clear();
+	}
+
 	private void initVars() {
 		// Some of these may not need initialization; if so I choose to err on the side of caution
-		BasicContext = getApplicationContext();
-		mBasicPackage = BasicContext.getPackageName();
+		Context appContext = getApplicationContext();
+		mContextMgr = new ContextManager(appContext);
+		mBasicPackage = appContext.getPackageName();
 
 		Resources res = getResources();
 		AppPath = res.getString(R.string.app_path);
@@ -196,7 +204,7 @@ public class Basic extends Activity {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);					// Set up of fresh start
-		Log.v(LOGTAG, CLASSTAG + " onCreate");
+		Log.v(LOGTAG, "onCreate: " + this);
 
 		initVars();
 		Settings.setDefaultValues(this, isAPK);				// if isAPK, force to default settings
@@ -217,9 +225,9 @@ public class Basic extends Activity {
 
 		/* If we have entered Basic and there is a program running, then we should not
 		 * interfere with that run. We will just exit this attempt. A program running
-		 * is indicated by theRunContext ! = null
+		 * is indicated by Run context != null.
 		 */
-		if (theRunContext != null) {
+		if (mContextMgr.getContext(ContextManager.ACTIVITY_RUN) != null) {
 			finish();
 			return;
 		}
@@ -240,14 +248,14 @@ public class Basic extends Activity {
 		}
 
 		if ((FileName != null) && !FileName.equals("")) {				// launched by shortcut or as a file share intent
-			AutoRun autoRun = new AutoRun(FileName, false, null);
+			AutoRun autoRun = new AutoRun(this, FileName, false, null);
 			Intent intent = autoRun.load();								// load the program
 			DoAutoRun = true;
 			startActivity(intent);										// run the program
 			finish();
 		} else if (AreSamplesLoaded()) {								// this is not a launcher short cut
 			DoAutoRun = false;
-			Intent intent = new Intent(BasicContext, Editor.class);
+			Intent intent = new Intent(this, Editor.class);
 			if (savedState != null) {									// if restarted by Editor
 				intent.putExtra(Editor.EXTRA_RESTART, savedState);		// send saved state back
 			}
@@ -343,7 +351,8 @@ public class Basic extends Activity {
 			if (f0.length() > 11) {					// f00_vnn_nn_xxx file
 				String[] f = f0.substring(5).split("_");
 				if (f.length > 1) {					// keep "0x.xx" of version number
-					String version = BasicContext.getString(R.string.version).substring(0,5);
+					Context appContext = mContextMgr.getContext(ContextManager.ACTIVITY_APP);
+					String version = appContext.getString(R.string.version).substring(0,5);
 					if (version.equals(f[0] + "." + f[1])) {	// Compare version numbers
 						return true;				// Versions match, correct files are loaded
 					}
@@ -369,15 +378,15 @@ public class Basic extends Activity {
 		// Earth.jpg = earth
 
 		if (input == null) return "";
-		String output = input.toLowerCase();		// Convert to lower case
-		int index = output.indexOf(".");			// Find the dot
-		if (index == -1) return output;				// if no dot, return as is
-		return output.substring(0, index);			// else isolate stuff in front of dot
+		String output = input.toLowerCase(Locale.getDefault());	// Convert to lower case
+		int index = output.indexOf(".");						// Find the dot
+		if (index == -1) return output;							// if no dot, return as is
+		return output.substring(0, index);						// else isolate stuff in front of dot
 	}
 
 	public static String getAlternateRawFileName(String input) {
 		// Converts a file name with upper and lower case characters to a lower case filename.
-		// The dot extension is appended to the end of the filename preceeded by "_".
+		// The dot extension is appended to the end of the filename preceded by "_".
 		// Any other dots in the file are also converted to "_".
 
 		// MyFile.png = myfile_png
@@ -387,8 +396,10 @@ public class Basic extends Activity {
 
 		// if there is no dot extension, returns original string
 
+		Locale locale = Locale.getDefault();
 		int idx = input.lastIndexOf("/");
-		return idx >= 0 ? input.substring(idx + 1).toLowerCase().replace(".", "_") : input.toLowerCase().replace(".", "_"); // Convert to lower case, convert all '.' to '_'
+		return idx >= 0 ? input.substring(idx + 1).toLowerCase(locale).replace(".", "_")
+						: input.toLowerCase(locale).replace(".", "_");	// Convert to lower case, convert all '.' to '_'
 	}
 
 	public static int getRawResourceID(String fileName) {
@@ -399,7 +410,8 @@ public class Basic extends Activity {
 				(attempt == 1) ? getAlternateRawFileName(fileName) :	// Convert conventional filename to raw resource name, BASIC!-style
 				(attempt == 2) ? getRawFileName(fileName) : "";			// If first try didn't work, try again, Android-style.
 			if (!rawFileName.equals("")) {
-				Resources res = BasicContext.getResources();
+				Context appContext = mContextMgr.getContext(ContextManager.ACTIVITY_APP);
+				Resources res = appContext.getResources();
 				String fullName = mBasicPackage + ":raw/" + rawFileName;// "fully-qualified resource name"
 				resID = res.getIdentifier(fullName, null, null);		// Get the resource ID
 			}
@@ -408,13 +420,14 @@ public class Basic extends Activity {
 	}
 
 	public static InputStream streamFromResource(String dir, String path) throws Exception {
+		Context appContext = mContextMgr.getContext(ContextManager.ACTIVITY_APP);
 		InputStream inputStream = null;
 		int resID = getRawResourceID(path);
 		if (resID != 0) {
-			Resources res = BasicContext.getResources();				// open an input stream from raw resource
+			Resources res = appContext.getResources();					// open an input stream from raw resource
 			inputStream = res.openRawResource(resID);					// this call may throw NotFoundException
 		} else {
-			inputStream = BasicContext.getAssets().						// open an input stream from an asset
+			inputStream = appContext.getAssets().						// open an input stream from an asset
 							open(getAppFilePath(dir, path));			// this call may throw IOException
 		}
 		return inputStream;
@@ -429,7 +442,8 @@ public class Basic extends Activity {
 		} else if (isAPK) {
 			InputStream inputStream = streamFromResource(dir, path);
 			if (inputStream != null) {
-				Resources res = BasicContext.getResources();
+				Context appContext = mContextMgr.getContext(ContextManager.ACTIVITY_APP);
+				Resources res = appContext.getResources();
 				if (enableDecryption & res.getBoolean(R.bool.apk_programs_encrypted)) {
 					inputStream = getDecryptedStream(inputStream);
 				}
@@ -532,7 +546,7 @@ public class Basic extends Activity {
 				out.flush();
 				out.close();
 			} catch (IOException e) {
-				//Log.v(LOGTAG, CLASSTAG + " I/O Exception 4");
+				//Log.v(LOGTAG, "I/O Exception 4");
 				if (ex == null) { ex = e; }
 			}
 		}
@@ -550,7 +564,7 @@ public class Basic extends Activity {
 				out.flush();
 				out.close();
 			} catch (IOException e) {
-				//Log.v(LOGTAG, CLASSTAG + " I/O Exception 4");
+				//Log.v(LOGTAG, "I/O Exception 4");
 				if (ex == null) { ex = e; }
 			}
 		}
@@ -572,7 +586,7 @@ public class Basic extends Activity {
 
 		@Override
 		protected void onPreExecute() {
-			mRes = BasicContext.getResources();
+			mRes = Basic.this.getResources();
 			String[] loadingMsg = mRes.getStringArray(R.array.loading_msg);	// Displayed while files are loading
 			mProgressMarker = mRes.getString(R.string.progress_marker);
 			mDisplayProgress = (loadingMsg != null) && (loadingMsg.length != 0);
@@ -636,7 +650,7 @@ public class Basic extends Activity {
 				doCantLoad();									// Can't load: show an error message
 			}
 			DoAutoRun = false;
-			return new Intent(BasicContext, Editor.class);		// Goto the Editor
+			return new Intent(Basic.this, Editor.class);		// Goto the Editor
 		}
 
 		private Intent doBGforAPK() {								// Background code of APK
@@ -656,9 +670,8 @@ public class Basic extends Activity {
 					catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
 				}
 			}
-			theRunContext = null;
 			DoAutoRun = true;
-			return new Intent(BasicContext, Run.class);			// Go run the program
+			return new Intent(Basic.this, Run.class);			// Go run the program
 		}
 
 		private void copyAssets(String path) {	// Recursively copy all the assets in the named subdirectory to the SDCard
@@ -893,15 +906,16 @@ public class Basic extends Activity {
 		}
 
 		public void refresh() {									// set fields from setup.xml values and Preferences settings
-			getScreenColors();
-			mSize = Settings.getFont(BasicContext);
-			mTypeface = Settings.getConsoleTypeface(BasicContext);
+			Context appContext = mContextMgr.getContext(ContextManager.ACTIVITY_APP);
+			getScreenColors(appContext);
+			mSize = Settings.getFont(appContext);
+			mTypeface = Settings.getConsoleTypeface(appContext);
 		}
 
-		public boolean getCustomColors(int[] colors) {
-			boolean useCustom = Settings.useCustomColors(BasicContext);
+		public boolean getCustomColors(Context appContext, int[] colors) {
+			boolean useCustom = Settings.useCustomColors(appContext);
 			if (useCustom) {
-				String[] prefs = Settings.getCustomColors(BasicContext);
+				String[] prefs = Settings.getCustomColors(appContext);
 				for (int i = 0; i < 4; ++i) {
 					String pref = prefs[i].trim().replace("0x", "#");
 					if (!pref.contains("#")) pref = "#" + pref;
@@ -915,23 +929,23 @@ public class Basic extends Activity {
 			return useCustom;
 		}
 
-		public void getScreenColors() {
+		public void getScreenColors(Context appContext) {
 			int[] colors = new int[4];
 
 			// The programmer may define the colors in res/values/setup.xml.
-			Resources res = BasicContext.getResources();
+			Resources res = appContext.getResources();
 			colors[0] = res.getInteger(R.integer.color1);		// default is solid black
 			colors[1] = res.getInteger(R.integer.color2);		// default is solid white
 			colors[2] = res.getInteger(R.integer.color3);		// default is blue Paul chose for "WBL"
 			colors[3] = res.getInteger(R.integer.color4);		// default is green, same in all schemes
 
 			// The user may change the colors in Preferences.
-			if (getCustomColors(colors)) {
+			if (getCustomColors(appContext, colors)) {
 				mTextColor = colors[1];
 				mBackgroundColor = colors[2];
 				mLineColor = colors[0];
 			} else {
-				String colorSetting = Settings.getColorScheme(BasicContext);
+				String colorSetting = Settings.getColorScheme(appContext);
 				if (colorSetting.equals("BW")) {
 					mTextColor = colors[0];
 					mBackgroundColor = colors[1];

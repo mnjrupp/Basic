@@ -34,6 +34,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.util.DisplayMetrics;
@@ -53,14 +54,12 @@ import android.graphics.Region;
 import android.graphics.Typeface;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
 import android.graphics.RectF;
 import android.graphics.Bitmap;
 
 
 public class GR extends Activity {
 	private static final String LOGTAG = "GR";
-	private static final String CLASSTAG = GR.class.getSimpleName();
 
 	public static final String EXTRA_SHOW_STATUSBAR = "statusbar";
 	public static final String EXTRA_ORIENTATION = "orientation";
@@ -79,7 +78,6 @@ public class GR extends Activity {
 	public static float scaleY = 1f;
 	public static boolean Running = false;
 	public static boolean NullBitMap = false;
-	public static InputMethodManager GraphicsImm ;
 	public static float Brightness = -1;
 
 	public static boolean doSTT = false;
@@ -401,8 +399,12 @@ public class GR extends Activity {
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
-		Log.v(LOGTAG, " " + CLASSTAG + " onCreate");
+		Log.v(LOGTAG, "onCreate");
 		super.onCreate(savedInstanceState);
+		ContextManager cm = Basic.getContextManager();
+		cm.registerContext(ContextManager.ACTIVITY_GR, this);
+		cm.setCurrent(ContextManager.ACTIVITY_GR);
+
 		setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
 		Intent intent = getIntent();
@@ -431,43 +433,57 @@ public class GR extends Activity {
 	}
 
 	@Override
-	protected void onPause() {
-		Log.v(LOGTAG, " " + CLASSTAG + " onPause " + this.toString());
-		Run.mEventList.add(new Run.EventHolder(GR_STATE, ON_PAUSE, null));
-		super.onPause();
+	protected void onStart() {
+		super.onStart();
+		Log.v(LOGTAG, "onStart");
 	}
 
 	@Override
-	protected void onStart() {
-		super.onStart();
-		Log.v(LOGTAG, " " + CLASSTAG + " onStart");
+	protected void onResume() {
+		Log.v(LOGTAG, "onResume " + this.toString());
+		if (context != this) {
+			Log.d(LOGTAG, "Context changed from " + context + " to " + this);
+			context = this;
+		}
+		Basic.getContextManager().onResume(ContextManager.ACTIVITY_GR);
+		Run.mEventList.add(new Run.EventHolder(GR_STATE, ON_RESUME, null));
+		super.onResume();
+	}
+
+	@Override
+	protected void onPause() {
+		Log.v(LOGTAG, "onPause " + this.toString());
+		Basic.getContextManager().onPause(ContextManager.ACTIVITY_GR);
+		Run.mEventList.add(new Run.EventHolder(GR_STATE, ON_PAUSE, null));
+		if (drawView.mKB != null) { drawView.mKB.forceHide(); }
+		super.onPause();
+	}
+
+	protected void onStop() {
+		Log.v(LOGTAG, "onStop");
+		super.onStop();
 	}
 
 	@Override
 	protected void onRestart() {
 		super.onRestart();
-		Log.v(LOGTAG, " " + CLASSTAG + " onRestart");
-	}
-
-	protected void onStop() {
-		Log.v(LOGTAG, " " + CLASSTAG + " onStop");
-		super.onStop();
+		Log.v(LOGTAG, "onRestart");
 	}
 
 	@Override
-	protected void onResume() {
-		Log.v(LOGTAG, " " + CLASSTAG + " onResume " + this.toString());
-		Run.mEventList.add(new Run.EventHolder(GR_STATE, ON_RESUME, null));
-		context = this;
-		super.onResume();
+	public void finish() {
+		// Tell the ContextManager we're done, if it doesn't already know.
+		Basic.getContextManager().unregisterContext(ContextManager.ACTIVITY_GR, this);
+		super.finish();
 	}
 
 	@Override
 	protected void onDestroy() {
-		Log.v(LOGTAG, " " + CLASSTAG + " onDestroy " + this.toString());
+		Log.v(LOGTAG, "onDestroy " + this.toString());
 		// if a new instance has started, don't let this one mess it up
 		if (context == this) {
 			Running = false;
+			context = null;
 			releaseLOCK();								// don't leave GR.command hanging
 		}
 		super.onDestroy();
@@ -480,7 +496,7 @@ public class GR extends Activity {
 
 	@Override
 	public boolean onKeyDown(int keyCode, KeyEvent event)  {
-		// Log.v(LOGTAG, " " + CLASSTAG + " keyDown " + keyCode);
+		// Log.v(LOGTAG, "keyDown " + keyCode);
 		if ((keyCode == KeyEvent.KEYCODE_BACK) ||
 			(keyCode == KeyEvent.KEYCODE_VOLUME_UP) ||
 			(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN))
@@ -495,7 +511,7 @@ public class GR extends Activity {
 	}
 
 	public boolean onKeyUp(int keyCode, KeyEvent event)  {						// The user hit a key
-		// Log.v(LOGTAG, " " + CLASSTAG + " keyUp " + keyCode);
+		// Log.v(LOGTAG, "keyUp " + keyCode);
 		if (keyCode == KeyEvent.KEYCODE_BACK) {
 			return super.onKeyUp(keyCode, event);
 		}
@@ -543,7 +559,6 @@ public class GR extends Activity {
 	private void releaseLOCK() {
 		if (waitForLock) {
 			synchronized (LOCK) {
-//				Log.d(LOGTAG, "releaseLOCK");
 				waitForLock = false;
 				LOCK.notify();							// release GR.OPEN or .CLOSE if it is waiting
 			}
@@ -586,13 +601,20 @@ public class GR extends Activity {
 	public class DrawView extends View {
 		private static final String LOGTAG = "GR.DrawView";
 
+		public KeyboardManager mKB;
+
 		@SuppressLint("NewApi")
 		public DrawView(Context context) {
 			super(context);
 			setFocusable(true);
 			setFocusableInTouchMode(true);
-			GraphicsImm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
-			if (android.os.Build.VERSION.SDK_INT >= 11) {	// Hardware acceleration is supported starting API 11
+			mKB = new KeyboardManager(context, this, new KeyboardManager.KeyboardChangeListener() {
+				public void kbChanged() {
+					Run.mEventList.add(new Run.EventHolder(GR_KB_CHANGED, 0, null));
+				}
+			});
+
+			if (Build.VERSION.SDK_INT >= 11) {				// Hardware acceleration is supported starting API 11
 				// Assume hardware acceleration is enabled for the app.
 				// Choose whether to use it in DrawView based on user Preference.
 				int layerType = Settings.getGraphicAcceleration(context)
@@ -613,14 +635,18 @@ public class GR extends Activity {
 			setRequestedOrientation(orientation);
 		}
 
+		@Override
+		public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+			return (mKB != null) && mKB.onKeyPreIme(keyCode, event); // delegate to KeyboardManager
+		}
+
 		@SuppressWarnings("deprecation")
 		@SuppressLint("NewApi")
 		public int getWindowMetrics(Point outSize) {	// return size in Point, density as return value
 			// This can be called when the DrawView does not yet know what size it is,
 			// so get the size from the WindowManager.
 			Display display = getWindowManager().getDefaultDisplay();
-			int level = Integer.valueOf(android.os.Build.VERSION.SDK_INT);
-			if (level < 13) {
+			if (Build.VERSION.SDK_INT < 13) {
 				outSize.set(display.getWidth(), display.getHeight());
 			} else {
 				display.getSize(outSize);
@@ -638,7 +664,7 @@ public class GR extends Activity {
 			for (int i = 0; i < numPointers; i++) {
 				int pid = event.getPointerId(i);
 				if (pid > 1)  { continue; }				// currently, we allow only two pointers
-//				Log.v(LOGTAG, " " + i + "," + pid + "," + action);
+
 				Run.TouchX[pid] = (double)event.getX(i);
 				Run.TouchY[pid] = (double)event.getY(i);
 				if (action == MotionEvent.ACTION_DOWN ||
@@ -665,7 +691,6 @@ public class GR extends Activity {
 
 		@Override
 		synchronized public void onDraw(Canvas canvas) {
-//			Log.d(LOGTAG,"onDraw");
 			if (doEnableBT) {							// If this activity is running
 				enableBT();								// Bluetooth must be enabled here
 				doEnableBT = false;
@@ -713,8 +738,6 @@ public class GR extends Activity {
 		} // onDraw()
 
 		public boolean doDraw(Canvas canvas, BDraw b) {
-//			Log.v(LOGTAG, "DrawIntoCanvas " + canvas + ", " + b);
-
 			float fx1;
 			float fy1;
 			RectF rectf;
@@ -777,9 +800,9 @@ public class GR extends Activity {
 					int pLength = array.length();
 					float[] pixels = new float[pLength];
 					for (int j = 0; j < pLength; ++j) {
-						pixels[j] = (float)Run.Vars.get(pBase + j).nval() + fx1;
+						pixels[j] = (float)Run.Vals.get(pBase + j).nval() + fx1;
 						++j;
-						pixels[j] = (float)Run.Vars.get(pBase + j).nval() + fy1;
+						pixels[j] = (float)Run.Vals.get(pBase + j).nval() + fy1;
 					}
 					canvas.drawPoints(pixels, thePaint);
 					break;
