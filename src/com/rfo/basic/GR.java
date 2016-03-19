@@ -3,7 +3,7 @@
 BASIC! is an implementation of the Basic programming language for
 Android devices.
 
-Copyright (C) 2010 - 2015 Paul Laughton
+Copyright (C) 2010 - 2016 Paul Laughton
 
 This file is part of BASIC! for Android
 
@@ -29,8 +29,10 @@ package com.rfo.basic;
 import static com.rfo.basic.Run.EventHolder.*;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 
 import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.media.AudioManager;
@@ -76,7 +78,8 @@ public class GR extends Activity {
 //	public static double TouchY[] = {0,0};
 	public static float scaleX = 1f;
 	public static float scaleY = 1f;
-	public static boolean Running = false;
+	public static boolean Running = false;				// flag set when Open object runs
+	private boolean mCreated = false;					// flat set when onCreate is complete
 	public static boolean NullBitMap = false;
 	public static float Brightness = -1;
 
@@ -156,9 +159,11 @@ public class GR extends Activity {
 		private String mText;							// for Type.Text
 		private int mClipOpIndex;						// for getValue
 		private Region.Op mClipOp;						// for Type.Clip
-		private int mListIndex;							// for getValue
-		private ArrayList<Double> mList;				// for Type.Poly
-		private Run.ArrayDescriptor mArray;				// for Type.SetPixels
+		private int mListIndex;
+		private ArrayList<Double> mList;
+		private Var.ArrayDef mArray;					// for Type.SetPixels
+		private int mArrayStart;						// position in array to start pixel array
+		private int mArraySublength;					// length of array segment to use as pixel array
 		private int mRadius;							// for Type.Circle
 		private float mAngle_1;							// for Type.Rotate, Arc
 		private float mAngle_2;							// for Type.Arc
@@ -188,7 +193,11 @@ public class GR extends Activity {
 		public void ltrb(int[] ltrb) { mLeft = ltrb[0]; mTop = ltrb[1]; mRight = ltrb[2]; mBottom = ltrb[3]; }
 		public void radius(int radius) { mRadius = radius; }
 		public void text(String text) { mText = text; }
-		public void array(Run.ArrayDescriptor array) { mArray = array; }
+		public void array(Var.ArrayDef array, int start, int sublength) {
+			mArray = array;
+			mArrayStart = start;
+			mArraySublength = sublength;
+		}
 		public void angle(float angle) { mAngle_1 = angle; }
 
 		public void show(VISIBLE show) {
@@ -247,18 +256,20 @@ public class GR extends Activity {
 		public boolean isVisible()	{ return mVisible; }
 
 		// type-specific getters
-		public String text()				{ return mText; }
-		public Region.Op clipOp()			{ return mClipOp; }
-		public ArrayList<Double> list()		{
+		public String text()		{ return mText; }
+		public Region.Op clipOp()	{ return mClipOp; }
+		public ArrayList<Double> list() {
 			if (mList == null) { mList = new ArrayList<Double>(); }
 			return mList;
 		}
-		public Run.ArrayDescriptor array()	{ return mArray; }
-		public int radius()					{ return mRadius; }
-		public float angle()				{ return mAngle_1; }
-		public float arcStart()				{ return mAngle_1; }
-		public float arcSweep()				{ return mAngle_2; }
-		public boolean useCenter()			{ return mUseCenter; }
+		public Var.ArrayDef array()	{ return mArray; }
+		public int arrayStart()		{ return mArrayStart; }
+		public int arraySublength()	{ return mArraySublength; }
+		public int radius()			{ return mRadius; }
+		public float angle()		{ return mAngle_1; }
+		public float arcStart()		{ return mAngle_1; }
+		public float arcSweep()		{ return mAngle_2; }
+		public boolean useCenter()	{ return mUseCenter; }
 
 		// coordinate getters
 		public int x()				{ return mLeft; }
@@ -405,12 +416,13 @@ public class GR extends Activity {
 		cm.registerContext(ContextManager.ACTIVITY_GR, this);
 		cm.setCurrent(ContextManager.ACTIVITY_GR);
 
-		setVolumeControlStream(AudioManager.STREAM_MUSIC);
-
 		Intent intent = getIntent();
 		int showStatusBar = intent.getIntExtra(EXTRA_SHOW_STATUSBAR, 0);
 		int orientation = intent.getIntExtra(EXTRA_ORIENTATION, -1);
 		int backgroundColor = intent.getIntExtra(EXTRA_BACKGROUND_COLOR, 0xFF000000);
+
+		setOrientation(orientation);
+		setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
 		showStatusBar = (showStatusBar == 0)
 				? WindowManager.LayoutParams.FLAG_FULLSCREEN			// do not show status bar
@@ -427,9 +439,11 @@ public class GR extends Activity {
 		drawView.requestFocus();
 		drawView.setBackgroundColor(backgroundColor);
 		drawView.setId(33);
-		drawView.setOrientation(orientation);		// Set orientation, get screen height and width
 
-		setVolumeControlStream(AudioManager.STREAM_MUSIC);
+		synchronized (drawView) {
+			mCreated = true;
+			condReleaseLOCK();
+		}
 	}
 
 	@Override
@@ -482,7 +496,7 @@ public class GR extends Activity {
 		Log.v(LOGTAG, "onDestroy " + this.toString());
 		// if a new instance has started, don't let this one mess it up
 		if (context == this) {
-			Running = false;
+			Running = mCreated = false;
 			context = null;
 			releaseLOCK();								// don't leave GR.command hanging
 		}
@@ -495,11 +509,17 @@ public class GR extends Activity {
 	}
 
 	@Override
-	public boolean onKeyDown(int keyCode, KeyEvent event)  {
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		// Log.v(LOGTAG, "keyDown " + keyCode);
-		if ((keyCode == KeyEvent.KEYCODE_BACK) ||
-			(keyCode == KeyEvent.KEYCODE_VOLUME_UP) ||
-			(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN))
+		if (keyCode == KeyEvent.KEYCODE_BACK) {
+			return super.onKeyDown(keyCode, event);
+		}
+		if (!Run.mBlockVolKeys && (
+				(keyCode == KeyEvent.KEYCODE_VOLUME_UP)   ||
+				(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) ||
+				(keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) ||
+				(keyCode == KeyEvent.KEYCODE_MUTE)        ||
+				(keyCode == KeyEvent.KEYCODE_HEADSETHOOK) ))
 		{
 			return super.onKeyDown(keyCode, event);
 		}
@@ -556,13 +576,37 @@ public class GR extends Activity {
 		}
 	}
 
-	private void releaseLOCK() {
+	private void condReleaseLOCK() {					// conditionally release LOCK
+		if (mCreated & Running) { releaseLOCK(); }
+	}
+
+	private void releaseLOCK() {						// unconditionally release LOCK
 		if (waitForLock) {
 			synchronized (LOCK) {
 				waitForLock = false;
 				LOCK.notify();							// release GR.OPEN or .CLOSE if it is waiting
 			}
 		}
+	}
+
+	@TargetApi(Build.VERSION_CODES.GINGERBREAD)
+	public void setOrientation(int orientation) {		// Convert and apply orientation setting
+		Log.v(LOGTAG, "Set orientation " + orientation);
+		switch (orientation) {
+			default:
+			case 1:  orientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT; break;
+			case 3:  orientation = (Build.VERSION.SDK_INT < Build.VERSION_CODES.GINGERBREAD)
+								 ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+								 : ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
+				break;
+			case 0:  orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE; break;
+			case 2:  orientation = (Build.VERSION.SDK_INT < Build.VERSION_CODES.GINGERBREAD)
+								 ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+								 : ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+				break;
+			case -1: orientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR; break;
+		}
+		setRequestedOrientation(orientation);
 	}
 
     public void connectDevice(Intent data, boolean secure) {
@@ -624,15 +668,9 @@ public class GR extends Activity {
 			}
 		}
 
-		synchronized public void setOrientation(int orientation) {	// Convert and apply orientation setting
+		synchronized public void setOrientation(int orientation) {	// synchronized orientation change
 			Log.v(LOGTAG, "Set orientation " + orientation);
-			switch (orientation) {
-				default:
-				case 1:  orientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT; break;
-				case 0:  orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE; break;
-				case -1: orientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR; break;
-			}
-			setRequestedOrientation(orientation);
+			GR.this.setOrientation(orientation);
 		}
 
 		@Override
@@ -733,7 +771,7 @@ public class GR extends Activity {
 						break;
 					}
 				}
-				releaseLOCK();
+				condReleaseLOCK();
 			}
 		} // onDraw()
 
@@ -753,9 +791,13 @@ public class GR extends Activity {
 				int pIndex = b.paint();
 				if (Run.PaintList.size() == 0)						return true;
 				if (pIndex < 1 || pIndex >= Run.PaintList.size())	return true;
-				thePaint = newPaint(Run.PaintList.get(pIndex));
+
+				thePaint = Run.PaintList.get(pIndex);
 				int alpha = b.alpha();
-				if (alpha < 256) thePaint.setAlpha(alpha);
+				if ((alpha < 256) && (alpha != thePaint.getAlpha())) {
+					thePaint = newPaint(thePaint);
+					thePaint.setAlpha(alpha);
+				}
 			}
 
 			switch (type) {
@@ -795,34 +837,39 @@ public class GR extends Activity {
 				case SetPixels:
 					fx1 = b.x();
 					fy1 = b.y();
-					Run.ArrayDescriptor array = b.array();
-					int pBase = array.base();
-					int pLength = array.length();
+					Var.ArrayDef array = b.array();
+					int pBase = b.arrayStart();
+					int pLength = b.arraySublength();
 					float[] pixels = new float[pLength];
 					for (int j = 0; j < pLength; ++j) {
-						pixels[j] = (float)Run.Vals.get(pBase + j).nval() + fx1;
+						pixels[j] = (float)array.nval(pBase + j) + fx1;
 						++j;
-						pixels[j] = (float)Run.Vals.get(pBase + j).nval() + fy1;
+						pixels[j] = (float)array.nval(pBase + j) + fy1;
 					}
 					canvas.drawPoints(pixels, thePaint);
 					break;
 				case Poly:
-					fx1 = b.x();
-					fy1 = b.y();
 					ArrayList<Double> thisList = b.list();
-					Path p = new Path();
-					float firstX = thisList.get(0).floatValue() + fx1;
-					float firstY = thisList.get(1).floatValue() + fy1;
-					p.moveTo(firstX, firstY);
-					int size = thisList.size();
-					for (int i = 2; i < size; ) {
-						float nextX = thisList.get(i++).floatValue() + fx1;
-						float nextY = thisList.get(i++).floatValue() + fy1;
-						p.lineTo(nextX, nextY);
+					// User may have changed the list. If it has
+					// an odd number of coordinates, ignore the last.
+					int points = thisList.size() / 2;
+					if (points >= 2) {					// do nothing if only one point
+						fx1 = b.x();
+						fy1 = b.y();
+						Path path = new Path();
+						Iterator<Double> listIt = thisList.iterator();
+						float firstX = listIt.next().floatValue() + fx1;
+						float firstY = listIt.next().floatValue() + fy1;
+						path.moveTo(firstX, firstY);
+						for (int p = 1; p < points; ++p) {
+							float x = listIt.next().floatValue() + fx1;
+							float y = listIt.next().floatValue() + fy1;
+							path.lineTo(x, y);
+						}
+						path.lineTo(firstX, firstY);
+						path.close();
+						canvas.drawPath(path, thePaint);
 					}
-					p.lineTo(firstX, firstY);
-					p.close();
-					canvas.drawPath(p, thePaint);
 					break;
 				case Text:
 					canvas.drawText(b.text(), b.x(), b.y(), thePaint);

@@ -60,6 +60,8 @@ public class AddProgramLine {
 	private static final Pattern ARRAY_LOAD_PATTERN	= Pattern.compile(ARRAY_LOAD_REGEX);
 	private static final String LIST_ADD_REGEX		= "^list" + WS_REGEX + "\\." + WS_REGEX + "add(.*)";
 	private static final Pattern LIST_ADD_PATTERN	= Pattern.compile(LIST_ADD_REGEX);
+	private static final String SENSORS_OPEN_REGEX	= "^sensors" + WS_REGEX + "\\." + WS_REGEX + "open.*";
+	private static final Pattern SENSORS_OPEN_PATTERN = Pattern.compile(SENSORS_OPEN_REGEX, Pattern.CASE_INSENSITIVE);
 	private static final String SQL_UPDATE_REGEX	= "^sql" + WS_REGEX + "\\." + WS_REGEX + "update.*";
 	private static final Pattern SQL_UPDATE_PATTERN = Pattern.compile(SQL_UPDATE_REGEX, Pattern.CASE_INSENSITIVE);
 
@@ -217,10 +219,15 @@ public class AddProgramLine {
 					  ( (SQL_UPDATE_PATTERN.matcher(line).matches()) ||	// unless command is SQL.Update
 					    ((mMerge != null) && (SQL_UPDATE_PATTERN.matcher(mMerge).matches()))
 					  )
-					) {
-					// If SQL.Update, assume first : is part of the command, even if it isn't.
-					sb.append(c);							// add it to the line
+					) { // If SQL.Update, assume first : is part of the command, even if it isn't.
+					sb.append(c);
 					firstColon = false;
+					continue;
+				} else
+				if  ( (SENSORS_OPEN_PATTERN.matcher(line).matches()) ||	// or command is Sensors.Open
+					  ((mMerge != null) && (SENSORS_OPEN_PATTERN.matcher(mMerge).matches()))
+					) {	// If Sensors.open, assume the rest of the line is part of the command, even if it isn't.
+					sb.append(c);
 					continue;
 				} else {									// it might be a label
 					int i2 = skipWhitespace(line, i + 1);	// skip following whitespace and/or comment
@@ -353,9 +360,7 @@ public class AddProgramLine {
 
 	private void doInclude(String fileName) {
 		// If fileName is enclosed in quotes, the quotes preserved its case in AddLine().
-		// Error messages go back through AddLine() again, so keep the quotes.
-		String originalFileName = fileName.substring(KW_INCLUDE.length()).trim();	// use this for error message
-		fileName = originalFileName.replace("\"",  "");								// use this for file operations
+		fileName = fileName.substring(KW_INCLUDE.length()).trim().replace("\"",  "");
 
 		for (String f : mIncludeFiles) {
 			if (f.equals(fileName)) return;							// don't do recursive INCLUDE
@@ -367,10 +372,9 @@ public class AddProgramLine {
 		// If getBufferedReader() returned null, it could not open the file or asset,
 		// or it could not decrypt an encrypted asset.
 		// It may or may not throw an exception.
-		// TODO: "not_found" may not be a good error message. Can we change it?
 		catch (Exception e) { }
 		if (buf == null) {
-			String t = "Error_Include_file (" + originalFileName + ") not_found";
+			String t = "END \"Error opening INCLUDE file " + fileName + "\"";
 			AddLine(t);
 			return;
 		}
@@ -378,7 +382,7 @@ public class AddProgramLine {
 		String data = null;
 		do {
 			try { data = buf.readLine(); }
-			catch (IOException e) { data = "Error reading Include file " + originalFileName; return; }
+			catch (IOException e) { data = "END \"Error reading INCLUDE file " + fileName + "\""; return; }
 			finally { AddLine(data); }							// add the line
 		} while (data != null);									// while not EOF and no error
 	}
